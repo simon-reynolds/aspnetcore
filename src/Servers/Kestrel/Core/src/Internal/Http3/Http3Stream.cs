@@ -353,6 +353,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http3
                     // request stream.
 
                     // TODO(JamesNK): Abort the read half of the stream with H3_NO_ERROR
+                    // https://github.com/dotnet/aspnetcore/issues/33575
 
                     RequestBodyPipe.Writer.Complete();
                 }

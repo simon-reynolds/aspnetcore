@@ -2431,9 +2431,9 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core.Tests
             var clientTcs = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
             var headers = new[]
             {
-                new KeyValuePair<string, string>(HeaderNames.Method, "GET"),
+                new KeyValuePair<string, string>(HeaderNames.Method, "POST"),
                 new KeyValuePair<string, string>(HeaderNames.Path, "/"),
-                new KeyValuePair<string, string>(HeaderNames.Scheme, "http"),
+                new KeyValuePair<string, string>(HeaderNames.Scheme, "https"),
             };
             var requestStream = await InitializeConnectionAndStreamsAsync(async context =>
             {
@@ -2482,6 +2482,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core.Tests
             await requestStream.ExpectReceiveEndOfStream();
 
             // TODO(JamesNK): Await the server aborting the sending half of the request stream.
+            // https://github.com/dotnet/aspnetcore/issues/33575
             await Task.Delay(1000);
 
             // Logged without an exception.
