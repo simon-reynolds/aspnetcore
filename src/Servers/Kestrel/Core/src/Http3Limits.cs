@@ -10,7 +10,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core
     /// </summary>
     public class Http3Limits
     {
-        internal const int DefaultMaxRequestHeaderFieldSize = 8192;
+        internal const int DefaultMaxRequestHeaderFieldSize = 16 * 1024;
 
         private int _headerTableSize;
         private int _maxRequestHeaderFieldSize = DefaultMaxRequestHeaderFieldSize;
@@ -39,7 +39,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core
         /// <summary>
         /// Indicates the size of the maximum allowed size of a request header field sequence. This limit applies to both name and value sequences in their compressed and uncompressed representations.
         /// <para>
-        /// Value must be greater than 0, defaults to 8192.
+        /// Value must be greater than 0, defaults to 2^14 (16,384).
         /// </para>
         /// </summary>
         public int MaxRequestHeaderFieldSize

@@ -487,8 +487,16 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http3
                 _requestHeaderParsingState = RequestHeaderParsingState.Trailers;
             }
 
-            QPackDecoder.Decode(payload, handler: this);
-            QPackDecoder.Reset();
+            try
+            {
+                QPackDecoder.Decode(payload, handler: this);
+                QPackDecoder.Reset();
+            }
+            catch (QPackDecodingException ex)
+            {
+                Log.QPackDecodingError(ConnectionId, StreamId, ex);
+                throw new Http3StreamErrorException(ex.Message, Http3ErrorCode.InternalError);
+            }
 
             switch (_requestHeaderParsingState)
             {

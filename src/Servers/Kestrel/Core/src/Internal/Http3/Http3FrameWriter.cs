@@ -265,7 +265,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http3
             return totalLength;
         }
 
-        public ValueTask<FlushResult> WriteResponseTrailers(HttpResponseTrailers headers)
+        public ValueTask<FlushResult> WriteResponseTrailersAsync(long streamId, HttpResponseTrailers headers)
         {
             lock (_writeLock)
             {
@@ -283,7 +283,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http3
                 }
                 catch (QPackEncodingException ex)
                 {
-                    //_log.HPackEncodingError(_connectionId, streamId, hex);
+                    _log.QPackEncodingError(_connectionId, streamId, ex);
                     _http3Stream.Abort(new ConnectionAbortedException(ex.Message, ex), Http3ErrorCode.InternalError);
                 }
 

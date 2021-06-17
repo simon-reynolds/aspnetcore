@@ -111,16 +111,16 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core.Tests
                 new KeyValuePair<string, string>(HeaderNames.Path, "/"),
                 new KeyValuePair<string, string>(HeaderNames.Scheme, "http"),
                 new KeyValuePair<string, string>(HeaderNames.Authority, "localhost:80"),
-                new KeyValuePair<string, string>("test", new string('a', 10000))
+                new KeyValuePair<string, string>("test", new string('a', 20000))
             };
 
             var requestStream = await InitializeConnectionAndStreamsAsync(_echoApplication);
 
             await requestStream.SendHeadersAsync(headers);
-            await requestStream.SendDataAsync(Encoding.ASCII.GetBytes("Hello world"));
 
-            // TODO figure out how to test errors for request streams that would be set on the Quic Stream.
-            await requestStream.ExpectReceiveEndOfStream();
+            await requestStream.WaitForStreamErrorAsync(
+                Http3ErrorCode.InternalError,
+                "The HTTP headers length exceeded the set limit of 16384 bytes.");
         }
 
         [Fact]
