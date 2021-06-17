@@ -103,6 +103,27 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core.Tests
         }
 
         [Fact]
+        public async Task RequestHeadersMaxRequestHeaderFieldSize_EndsStream()
+        {
+            var headers = new[]
+            {
+                new KeyValuePair<string, string>(HeaderNames.Method, "Custom"),
+                new KeyValuePair<string, string>(HeaderNames.Path, "/"),
+                new KeyValuePair<string, string>(HeaderNames.Scheme, "http"),
+                new KeyValuePair<string, string>(HeaderNames.Authority, "localhost:80"),
+                new KeyValuePair<string, string>("test", new string('a', 10000))
+            };
+
+            var requestStream = await InitializeConnectionAndStreamsAsync(_echoApplication);
+
+            await requestStream.SendHeadersAsync(headers);
+            await requestStream.SendDataAsync(Encoding.ASCII.GetBytes("Hello world"));
+
+            // TODO figure out how to test errors for request streams that would be set on the Quic Stream.
+            await requestStream.ExpectReceiveEndOfStream();
+        }
+
+        [Fact]
         public async Task ConnectMethod_Accepted()
         {
             var requestStream = await InitializeConnectionAndStreamsAsync(_echoMethod);
