@@ -103,27 +103,6 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core.Tests
         }
 
         [Fact]
-        public async Task RequestHeadersMaxRequestHeaderFieldSize_EndsStream()
-        {
-            var headers = new[]
-            {
-                new KeyValuePair<string, string>(HeaderNames.Method, "Custom"),
-                new KeyValuePair<string, string>(HeaderNames.Path, "/"),
-                new KeyValuePair<string, string>(HeaderNames.Scheme, "http"),
-                new KeyValuePair<string, string>(HeaderNames.Authority, "localhost:80"),
-                new KeyValuePair<string, string>("test", new string('a', 10000))
-            };
-
-            var requestStream = await InitializeConnectionAndStreamsAsync(_echoApplication);
-
-            await requestStream.SendHeadersAsync(headers);
-            await requestStream.SendDataAsync(Encoding.ASCII.GetBytes("Hello world"));
-
-            // TODO figure out how to test errors for request streams that would be set on the Quic Stream.
-            await requestStream.ExpectReceiveEndOfStream();
-        }
-
-        [Fact]
         public async Task ConnectMethod_Accepted()
         {
             var requestStream = await InitializeConnectionAndStreamsAsync(_echoMethod);
@@ -2413,6 +2392,45 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core.Tests
 
             await requestStream.ExpectHeadersAsync().DefaultTimeout();
             await requestStream.ExpectReceiveEndOfStream().DefaultTimeout();
+        }
+
+        [Fact]
+        public async Task HEADERS_ExceedsClientMaxFieldSectionSize_ErrorOnServer()
+        {
+            await InitializeConnectionAsync(context =>
+            {
+                context.Response.Headers["BigHeader"] = new string('!', 100);
+                return Task.CompletedTask;
+            });
+
+            var outboundcontrolStream = await CreateControlStream();
+            await outboundcontrolStream.SendSettingsAsync(new List<Http3PeerSetting>
+            {
+                new Http3PeerSetting(Internal.Http3.Http3SettingType.MaxFieldSectionSize, 100)
+            });
+
+            var maxFieldSetting = await ServerReceivedSettingsReader.ReadAsync().DefaultTimeout();
+
+            Assert.Equal(Internal.Http3.Http3SettingType.MaxFieldSectionSize, maxFieldSetting.Key);
+            Assert.Equal(100, maxFieldSetting.Value);
+
+            var headers = new[]
+            {
+                new KeyValuePair<string, string>(HeaderNames.Method, "GET"),
+                new KeyValuePair<string, string>(HeaderNames.Path, "/"),
+                new KeyValuePair<string, string>(HeaderNames.Scheme, "http"),
+            };
+
+            var requestStream = await CreateRequestStream().DefaultTimeout();
+            await requestStream.SendHeadersAsync(new[]
+            {
+                new KeyValuePair<string, string>(HeaderNames.Path, "/"),
+                new KeyValuePair<string, string>(HeaderNames.Scheme, "http"),
+                new KeyValuePair<string, string>(HeaderNames.Method, "GET"),
+                new KeyValuePair<string, string>(HeaderNames.Authority, "localhost:80"),
+            }, endStream: true);
+
+            await requestStream.WaitForStreamErrorAsync(Http3ErrorCode.InternalError, "Total header size exceeds the maximum size allowed by peer.");
         }
     }
 }

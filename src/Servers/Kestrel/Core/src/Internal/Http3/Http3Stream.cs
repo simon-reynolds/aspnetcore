@@ -71,7 +71,9 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http3
                 context.ConnectionId,
                 context.MemoryPool,
                 context.ServiceContext.Log,
-                _streamIdFeature);
+                _streamIdFeature,
+                context.ClientPeerSettings,
+                this);
 
             // ResponseHeaders aren't set, kind of ugly that we need to reset.
             Reset();
@@ -83,7 +85,11 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http3
                 context.ServiceContext.Log);
             RequestBodyPipe = CreateRequestBodyPipe(64 * 1024); // windowSize?
             Output = _http3Output;
-            QPackDecoder = new QPackDecoder(_context.ServiceContext.ServerOptions.Limits.Http3.MaxRequestHeaderFieldSize);
+
+            // TODO(JamesNK): What is the purpose of max header length and why measure in QPackDecoder?
+            // I think the meaning of SETTINGS_MAX_FIELD_SECTION_SIZE may have been misunderstood to apply per
+            // header rather than all headers that make up the section.
+            QPackDecoder = new QPackDecoder(int.MaxValue);
         }
 
         public long? InputRemaining { get; internal set; }

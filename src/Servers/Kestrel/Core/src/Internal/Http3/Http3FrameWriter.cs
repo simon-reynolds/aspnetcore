@@ -22,7 +22,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http3
     internal class Http3FrameWriter
     {
         private readonly object _writeLock = new object();
-        private readonly QPackEncoder _qpackEncoder = new QPackEncoder();
+        private readonly QPackEncoder _qpackEncoder;
 
         private readonly PipeWriter _outputWriter;
         private readonly ConnectionContext _connectionContext;
@@ -32,6 +32,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http3
         private readonly MemoryPool<byte> _memoryPool;
         private readonly IKestrelTrace _log;
         private readonly IStreamIdFeature _streamIdFeature;
+        private readonly IHttp3Stream _http3Stream;
         private readonly Http3RawFrame _outgoingFrame;
         private readonly TimingPipeFlusher _flusher;
 
@@ -45,7 +46,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http3
 
         //private int _unflushedBytes;
 
-        public Http3FrameWriter(PipeWriter output, ConnectionContext connectionContext, ITimeoutControl timeoutControl, MinDataRate? minResponseDataRate, string connectionId, MemoryPool<byte> memoryPool, IKestrelTrace log, IStreamIdFeature streamIdFeature)
+        public Http3FrameWriter(PipeWriter output, ConnectionContext connectionContext, ITimeoutControl timeoutControl, MinDataRate? minResponseDataRate, string connectionId, MemoryPool<byte> memoryPool, IKestrelTrace log, IStreamIdFeature streamIdFeature, Http3PeerSettings clientPeerSettings, IHttp3Stream http3Stream)
         {
             _outputWriter = output;
             _connectionContext = connectionContext;
@@ -55,9 +56,16 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http3
             _memoryPool = memoryPool;
             _log = log;
             _streamIdFeature = streamIdFeature;
+            _http3Stream = http3Stream;
             _outgoingFrame = new Http3RawFrame();
             _flusher = new TimingPipeFlusher(_outputWriter, timeoutControl, log);
             _headerEncodingBuffer = new byte[_maxFrameSize];
+            _qpackEncoder = new QPackEncoder();
+
+            // TODO(JamesNK): QPack encoder doesn't react to settings change during a stream
+            _qpackEncoder.MaxTotalHeaderSize = clientPeerSettings.MaxRequestHeaderFieldSectionSize > int.MaxValue
+                ? int.MaxValue
+                : (int)clientPeerSettings.MaxRequestHeaderFieldSectionSize;
         }
 
         public void UpdateMaxFrameSize(uint maxFrameSize)
@@ -273,10 +281,10 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http3
                     var done = _qpackEncoder.BeginEncode(EnumerateHeaders(headers), buffer, out var payloadLength);
                     FinishWritingHeaders(payloadLength, done);
                 }
-                catch (QPackEncodingException)
+                catch (QPackEncodingException ex)
                 {
                     //_log.HPackEncodingError(_connectionId, streamId, hex);
-                    //_http3Stream.Abort(new ConnectionAbortedException(hex.Message, hex));
+                    _http3Stream.Abort(new ConnectionAbortedException(ex.Message, ex), Http3ErrorCode.InternalError);
                 }
 
                 return TimeFlushUnsynchronizedAsync();
@@ -323,11 +331,10 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Http3
                     var done = _qpackEncoder.BeginEncode(statusCode, EnumerateHeaders(headers), buffer, out var payloadLength);
                     FinishWritingHeaders(payloadLength, done);
                 }
-                catch (QPackEncodingException hex)
+                catch (QPackEncodingException ex)
                 {
-                    // TODO figure out how to abort the stream here.
-                    //_http3Stream.Abort(new ConnectionAbortedException(hex.Message, hex));
-                    throw new InvalidOperationException(hex.Message, hex); // Report the error to the user if this was the first write.
+                    _http3Stream.Abort(new ConnectionAbortedException(ex.Message, ex), Http3ErrorCode.InternalError);
+                    throw new InvalidOperationException(ex.Message, ex); // Report the error to the user if this was the first write.
                 }
             }
         }

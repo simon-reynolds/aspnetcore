@@ -11,8 +11,11 @@ namespace System.Net.Http.QPack
 {
     internal sealed class QPackEncoder
     {
-        private IEnumerator<KeyValuePair<string, string>>? _enumerator;
+        public int MaxTotalHeaderSize { get; set; }
 
+        private IEnumerator<KeyValuePair<string, string>>? _enumerator;
+        private int _currentTotalHeaderSize;
+        
         // https://tools.ietf.org/html/draft-ietf-quic-qpack-11#section-4.5.2
         //   0   1   2   3   4   5   6   7
         // +---+---+---+---+---+---+---+---+
@@ -407,6 +410,7 @@ namespace System.Net.Http.QPack
         public bool BeginEncode(IEnumerable<KeyValuePair<string, string>> headers, Span<byte> buffer, out int length)
         {
             _enumerator = headers.GetEnumerator();
+            _currentTotalHeaderSize = 0;
 
             bool hasValue = _enumerator.MoveNext();
             Debug.Assert(hasValue == true);
@@ -424,6 +428,7 @@ namespace System.Net.Http.QPack
         public bool BeginEncode(int statusCode, IEnumerable<KeyValuePair<string, string>> headers, Span<byte> buffer, out int length)
         {
             _enumerator = headers.GetEnumerator();
+            _currentTotalHeaderSize = 0;
 
             bool hasValue = _enumerator.MoveNext();
             Debug.Assert(hasValue == true);
@@ -433,6 +438,8 @@ namespace System.Net.Http.QPack
             buffer[1] = 0;
 
             int statusCodeLength = EncodeStatusCode(statusCode, buffer.Slice(2));
+            _currentTotalHeaderSize += 42; // :status + xxx + 32 (name + value + 32 overhead)
+
             bool done = Encode(buffer.Slice(statusCodeLength + 2), throwIfNoneEncoded: false, out int headersLength);
             length = statusCodeLength + headersLength + 2;
 
@@ -450,13 +457,22 @@ namespace System.Net.Http.QPack
 
             do
             {
-                if (!EncodeLiteralHeaderFieldWithoutNameReference(_enumerator!.Current.Key, _enumerator.Current.Value, buffer.Slice(length), out int headerLength))
+                var key = _enumerator!.Current.Key;
+                var value = _enumerator.Current.Value;
+
+                if (!EncodeLiteralHeaderFieldWithoutNameReference(key, value, buffer.Slice(length), out int headerLength))
                 {
                     if (length == 0 && throwIfNoneEncoded)
                     {
                         throw new QPackEncodingException("TODO sync with corefx" /* CoreStrings.HPackErrorNotEnoughBuffer */);
                     }
                     return false;
+                }
+
+                _currentTotalHeaderSize += HeaderField.GetLength(key.Length, value.Length);
+                if (_currentTotalHeaderSize > MaxTotalHeaderSize)
+                {
+                    throw new QPackEncodingException("Total header size exceeds the maximum size allowed by peer.");
                 }
 
                 length += headerLength;
