@@ -2433,7 +2433,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Core.Tests
             {
                 new KeyValuePair<string, string>(HeaderNames.Method, "POST"),
                 new KeyValuePair<string, string>(HeaderNames.Path, "/"),
-                new KeyValuePair<string, string>(HeaderNames.Scheme, "https"),
+                new KeyValuePair<string, string>(HeaderNames.Scheme, "http"),
             };
             var requestStream = await InitializeConnectionAndStreamsAsync(async context =>
             {
